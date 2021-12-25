@@ -2,6 +2,8 @@
 
 **原作者：极品史莱姆 (799052200@qq.com)**
 
+原作地址：https://codebus.cn/contributor/jpslm-2d-racing-car
+
 这是原作者的《2D 赛车》的修改版——2.5D 双人赛车！
 
 ## 编译环境
