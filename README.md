@@ -22,6 +22,10 @@ EasyX 20211109
 
 ![图片](https://github.com/zouhuidong/2_5D_RacingCar/blob/main/screenshot/1.png)
 
+**原作游戏截图**
+
+![图片](https://github.com/zouhuidong/2_5D_RacingCar/blob/main/screenshot/4.png)
+
 ## 新增内容
 
 1. 视角改为 2.5D（伪 3D）
