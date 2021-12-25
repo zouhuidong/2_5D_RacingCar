@@ -9,8 +9,10 @@
 //	1. 视角改为 2.5D（伪 3D）
 //	2. 新增 SHIFT 键操作
 //	3. 修改了速度等部分参数
-// 
+//	4. 显示小地图
+//	5. 显示速度
 //
+
 
 
 #include "define.h"
@@ -784,9 +786,9 @@ IMAGE GetPlayerView(
 // 伪 3D 绘制玩家视角
 void Draw3D_PlayerView()
 {
-	int nViewLength = 500;		// 视野长度
+	int nViewLength = 300;		// 视野长度
 	int nNearViewWidth = 100;	// 近视野宽度
-	int nFarViewWidth = 300;	// 远视野宽度
+	int nFarViewWidth = 200;	// 远视野宽度
 	int nRearViewLength = 30;	// 后视野长度（用于看见车身）
 
 	// 双人模式下为减小消耗，缩窄视野
@@ -831,6 +833,10 @@ void Draw3D_PlayerView()
 		ImageToSize(WIDE / 2, HEIGHT, &imgRealView[1]);
 		putimage(WIDE / 2, 0, &imgRealView[0]);	// 玩家 1 操作方向键，所以放右边
 		putimage(0, 0, &imgRealView[1]);		// 玩家 2 操作 WSAD，放左边
+		
+		setlinestyle(PS_SOLID, 2);
+		line(WIDE / 2, 0, WIDE / 2, HEIGHT);
+		setlinestyle(PS_SOLID, 1);
 	}
 }
 
