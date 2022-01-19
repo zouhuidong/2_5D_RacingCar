@@ -32,7 +32,7 @@ EasyX 20211109
 
 1. 优化了小车坐标旋转算法，速度提示 60 倍以上。（详见 `GetRotatedCarPosition` 和 `GetRotatedCarPosition2` 函数）
 
-2. 原作中将按钮的 `button` 错拼为 `bottom`，已更正。
+2. 原作中将按钮类的名称 `button` 错拼为 `bottom`，已更正。
 
 3.
 
