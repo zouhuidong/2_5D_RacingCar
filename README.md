@@ -48,15 +48,15 @@ EasyX 20211109
 
 ## 游戏截图
 
+![图片](https://github.com/zouhuidong/2_5D_RacingCar/blob/main/screenshot/5.png)
+
 ![图片](https://github.com/zouhuidong/2_5D_RacingCar/blob/main/screenshot/2.png)
+
+![图片](https://github.com/zouhuidong/2_5D_RacingCar/blob/main/screenshot/6.png)
 
 ![图片](https://github.com/zouhuidong/2_5D_RacingCar/blob/main/screenshot/3.png)
 
-![图片](https://github.com/zouhuidong/2_5D_RacingCar/blob/main/screenshot/1.png)
-
-**原作游戏截图**
-
-![图片](https://github.com/zouhuidong/2_5D_RacingCar/blob/main/screenshot/4.png)
+![图片](https://github.com/zouhuidong/2_5D_RacingCar/blob/main/screenshot/win.gif)
 
 ## “3D”原理
 
