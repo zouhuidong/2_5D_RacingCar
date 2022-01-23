@@ -5,72 +5,8 @@
 //	改编自 极品史莱姆 (799052200@qq.com)
 //	详见 define.h
 //
-//	修改内容：
-//	1. 视角改为 2.5D（伪 3D）
-//	2. 新增 SHIFT 键操作
-//	3. 修改了速度等部分参数
-//	4. 显示小地图
-//	5. 显示速度
-//
 
-
-
-#include "define.h"
-
-/*
- *	参考自http://tieba.baidu.com/p/5218523817?pid=109267542552&cid=0#109267542552
- *	函数名:zoomImage(IMAGE* pImg,int width，int height)
- *	参数说明:pImg是原图指针，width1和height1是目标图片的尺寸。
- *	函数功能:将图片进行缩放，返回目标图片 可以自定义长与宽，也可以只给长自动计算宽
- *	返回目标图片
-*/
-IMAGE zoomImage(IMAGE* pImg, int newWidth, int newHeight = 0)
-{
-	// 防止越界
-	if (newWidth<0 || newHeight<0){
-		newWidth = pImg->getwidth();
-		newHeight = pImg->getheight();
-	}
-
-	// 当参数只有一个时按比例自动缩放
-	if (newHeight == 0){
-		// 此处需要注意先*再/。不然当目标图片小于原图时会出错
-		newHeight = newWidth * pImg->getheight() / pImg->getwidth();
-	}
-
-	// 获取需要进行缩放的图片
-	IMAGE newImg(newWidth, newHeight);
-
-	// 分别对原图像和目标图像获取指针
-	DWORD* oldDr = GetImageBuffer(pImg);
-	DWORD* newDr = GetImageBuffer(&newImg);
-
-	// 赋值 使用双线性插值算法
-	for (int i = 0; i<newHeight - 1; i++){
-		for (int j = 0; j<newWidth - 1; j++){
-			int t = i*newWidth + j;
-			int xt = j*pImg->getwidth() / newWidth;
-			int yt = i*pImg->getheight() / newHeight;
-			newDr[i*newWidth + j] = oldDr[xt + yt*pImg->getwidth()];
-			// 实现逐行加载图片
-			byte r = (GetRValue(oldDr[xt + yt*pImg->getwidth()]) +
-				GetRValue(oldDr[xt + yt*pImg->getwidth() + 1]) +
-				GetRValue(oldDr[xt + (yt + 1)*pImg->getwidth()]) +
-				GetRValue(oldDr[xt + (yt + 1)*pImg->getwidth() + 1])) / 4;
-			byte g = (GetGValue(oldDr[xt + yt*pImg->getwidth()]) +
-				GetGValue(oldDr[xt + yt*pImg->getwidth()] + 1) +
-				GetGValue(oldDr[xt + (yt + 1)*pImg->getwidth()]) +
-				GetGValue(oldDr[xt + (yt + 1)*pImg->getwidth()]) + 1) / 4;
-			byte b = (GetBValue(oldDr[xt + yt*pImg->getwidth()]) +
-				GetBValue(oldDr[xt + yt*pImg->getwidth()] + 1) +
-				GetBValue(oldDr[xt + (yt + 1)*pImg->getwidth()]) +
-				GetBValue(oldDr[xt + (yt + 1)*pImg->getwidth() + 1])) / 4;
-			newDr[i*newWidth + j] = RGB(r, g, b);
-		}
-	}
-
-	return newImg;
-}
+#include "NewDrawer.h"
 
 void LoadIntro(wstring File)
 {
@@ -118,11 +54,11 @@ BOOL SearchFilesByWildcard(wstring wildcardPath)	// 查找文件
 }
 
 MOUSEMSG m;
-bool MouseTouch(int left, int top, int right, int bottom)
+bool MouseTouch(int left, int top, int right, int button)
 {
 	for (int i1 = left; i1 < right; i1++)
 	{
-		for (int i2 = top; i2 < bottom; i2++)
+		for (int i2 = top; i2 < button; i2++)
 		{
 			if (m.x == i1 && m.y == i2)
 			{
@@ -133,15 +69,24 @@ bool MouseTouch(int left, int top, int right, int bottom)
 	return false;
 }
 
+// 选择地图，返回地图序号，-1 表示取消选择
 int ChooseMap()
 {
+	// 是否已经加载过地图
+	static bool isLoad = false;
+	if (IntroList.size() == 0)
+	{
+		isLoad = false;
+	}
+
 	RECT r;
 	cleardevice();
 	wchar_t tmp[30];				//缓冲区
 	wstring tw;						//对标题的处理
 
-	if (SearchFilesByWildcard(L"map/*"))
+	if (isLoad || SearchFilesByWildcard(L"map/*"))
 	{
+		isLoad = true;
 
 		setbkmode(TRANSPARENT);
 		setlinecolor(LIGHTBLUE);
@@ -186,7 +131,20 @@ int ChooseMap()
 		while (true)
 		{
 			FlushMouseMsgBuffer();
-			m = GetMouseMsg();
+			while (true)
+			{
+				if (MouseHit())
+				{
+					m = GetMouseMsg();
+					break;
+				}
+
+				if (GetAsyncKeyState(VK_ESCAPE) & 0x8000)
+				{
+					return -1;
+				}
+			}
+
 			if (m.mkLButton)
 			{
 				for (unsigned int i = 0; i < IntroList.size(); i++)
@@ -208,18 +166,103 @@ int ChooseMap()
 	}
 }
 
-int PointTsm(int x, int y, int wide, int high)
+// 返回一个二维点在一维数组中的下标
+// 若坐标越界则将缩放到边界上最近一点
+int PointTsm(int x, int y, int width, int height)
 {
-	if (x < 0)return x = 0;
-	if (x >= wide)return x = wide;
-	if (y < 0)return y = 0;
-	if (y >= high)return y = high;
+	if (x < 0)		x = 0;
+	if (x >= width)	x = width;
+	if (y < 0)		y = 0;
+	if (y >= height)y = height;
 
-	return wide*y + x;
+	return width * y + x;
 }
 
+// 根据两点计算直线方程
+Line GetLineOfPoints(POINT p1, POINT p2)
+{
+	Line l;
+	if (p1.x == p2.x)
+	{
+		l.isVertical = true;
+		l.b = p1.x;
+	}
+	else
+	{
+		l.k = (double)(p1.y - p2.y) / (p1.x - p2.x);
+		l.b = (double)p1.y - l.k * p1.x;
+	}
+
+	return l;
+}
+
+// 获取两直线交点
+// 返回 -1 表示无交点（两条竖线不重叠）
+// 返回 0 表示有一个交点
+// 返回 1 表示有无穷个交点（两条竖线重叠）
+int GetLinesIntersection(Line l1, Line l2, POINT* p)
+{
+	// 若存在至少一条竖线的解
+	Line pl[2] = { l1,l2 };
+	for (int i = 0; i < 2; i++)
+	{
+		if (pl[i].isVertical)
+		{
+			if (pl[!i].isVertical)
+			{
+				if (pl[i].b == pl[!i].b)
+				{
+					*p = { (LONG)pl[i].b,0 };
+					return 1;
+				}
+				else
+				{
+					return -1;
+				}
+			}
+			else
+			{
+				*p = { (LONG)pl[i].b,(LONG)(pl[!i].k * pl[i].b + pl[!i].b) };
+				return 0;
+			}
+		}
+	}
+
+	// 两条斜线的解
+	double x = (l2.b - l1.b) / (l1.k - l2.k);
+	double y = l1.k * x + l1.b;
+	*p = { (LONG)x,(LONG)y };
+	return 0;
+}
+
+// 过线检测
+// 由于可能车速太快直接穿越终点线导致没有检测到过线
+// 使用此函数专门检验是否过线
+// p1, p2: 连续两次获取的玩家坐标
+// 返回是否穿过终点线
+bool CheckPass(POINT p1, POINT p2)
+{
+	Line l = GetLineOfPoints(p1, p2);
+	POINT p = { 0,0 };
+	if (GetLinesIntersection(l, pEndLine, &p) == 0)
+	{
+		if (isInRect(p.x, p.y, { p1.x,p1.y,p2.x,p2.y }) &&
+			isInRect(p.x, p.y, { pEndLinePoints[0].x,pEndLinePoints[0].y,pEndLinePoints[1].x,pEndLinePoints[1].y }))
+		{
+			return true;
+		}
+	}
+
+	return false;
+}
+
+// 玩家移动检测及消息处理
+// player: false 表示玩家 1，true 表示玩家 2
 void MoveCheck(bool player)
 {
+	// 上一帧的小车位置
+	static POINT pPrevious[2] = { {-1,-1},{-1,-1} };
+
 	bool PinLine = false;
 	bool CinLine = false;
 
@@ -230,58 +273,85 @@ void MoveCheck(bool player)
 	inSand = false;
 	inWall = false;
 	inEndline = false;
-	DWORD* pbTch = GetImageBuffer(&Toucher);
-	double Mx;
-	double My;
-	int iX;
-	int iY;
+	DWORD* pbTch = GetImageBuffer(&Mask);
+	DWORD* pCar;
+	double x;
+	double y;
+	int w;
+	int h;
 	double SpeedChange = 0;
-	DWORD c;
+	COLORREF c;
+
+	// 程序绘图、处理消息耗时（秒）
+	float fProcessingTime = 0;
+	if (Processing != 0)
+	{
+		fProcessingTime = (clock() - Processing) / (float)CLOCKS_PER_SEC;
+	}
+	float fMultiple = 1 + fProcessingTime;
+
 	if (!player)
 	{
-		Mx = Pspeed*cos(PForward) + Px;
-		My = Pspeed*sin(PForward) + Py;
+		x = Pspeed * cos(PForward) * fMultiple + Px;
+		y = Pspeed * sin(PForward) * fMultiple + Py;
 		DWORD* pbImg = GetImageBuffer(&Player1);
-		iX = Player1.getwidth();
-		iY = Player1.getheight();
+		pCar = pbImg;
+		w = Player1.getwidth();
+		h = Player1.getheight();
 	}
 	else
 	{
-		Mx = Cspeed*cos(CForward) + Cx;
-		My = Cspeed*sin(CForward) + Cy;
+		x = Cspeed * cos(CForward) * fMultiple + Cx;
+		y = Cspeed * sin(CForward) * fMultiple + Cy;
 		DWORD* pbImg = GetImageBuffer(&Player2);
-		iX = Player2.getwidth();
-		iY = Player2.getheight();
+		pCar = pbImg;
+		w = Player2.getwidth();
+		h = Player2.getheight();
 	}
-	//获取所在的地面类型
-	for (int i1 = 0; i1 < iX; i1++)
+
+	int i;
+	int j;
+
+	// 获取所在的地面类型
+	for (i = 0; i < w; i++)
 	{
-		for (int i2 = 0; i2 < iY; i2++)
+		for (j = 0; j < h; j++)
 		{
-			c = pbTch[PointTsm((int)ceil(i1 + Mx), (int)ceil(i2 + My), WIDE, HEIGHT)] & 0x00FFFFFF;
-			if (c == BGR(BLACK))
+			if ((pCar[PointTsm(i, j, w, h)] & 0x00FFFFFF) == WHITE)
 			{
-				inRoad = true;
+				continue;
 			}
-			else if (c == BGR(0x00FFFF))
+
+			c = BGR(pbTch[PointTsm(i + (int)x, j + (int)y, nMapW, nMapH)] & 0x00FFFFFF);
+			switch (c)
 			{
-				inSand = true;
-			}
-			else if (c == BGR(0xFF0000))
-			{
-				inIce = true;
-			}
-			else if (c == BGR(0x0000FF))
-			{
-				inWall = true;
-			}
-			else if (c == BGR(0x00FF00) || c == BGR(0xAAAAAA))
-			{
-				inEndline = true;
-				inRoad = true;
+			case BLACK:				inRoad = true;	break;
+			case RGB(255, 255, 0):	inSand = true;	break;
+			case RGB(0, 0, 255):	inIce = true;	break;
+			case RGB(255, 0, 0):	inWall = true;	break;
+			case RGB(0, 255, 0):	inEndline = true; inRoad = true;	break;
 			}
 		}
 	}
+
+	// 单独检验过线
+	if (!player && pPrevious[0].x > 0)
+	{
+		if (CheckPass(pPrevious[0], { Px, Py }))
+		{
+			inEndline = true;
+			inRoad = true;
+		}
+	}
+	if (player && pPrevious[1].x > 0)
+	{
+		if (CheckPass(pPrevious[1], { Cx, Cy }))
+		{
+			inEndline = true;
+			inRoad = true;
+		}
+	}
+
 	//对所在地面类型进行操作
 	if (inSand)
 	{
@@ -300,7 +370,7 @@ void MoveCheck(bool player)
 		if (!player)
 		{
 			PinLine = true;
-			if (cos(PForward)*Pspeed<0)
+			if (cos(PForward - EndLineForward) * Pspeed < 0)	// 逆行
 			{
 				inWall = true;
 				Pwrong = true;
@@ -308,13 +378,13 @@ void MoveCheck(bool player)
 			}
 			else
 			{
-				if (!PHadPass)PHadPass = true;
+				if (!PHadPass)	PHadPass = true;
 			}
 		}
 		else
 		{
 			CinLine = true;
-			if (cos(CForward)*Cspeed<0)
+			if (cos(CForward - EndLineForward) * Cspeed < 0)	// 逆行
 			{
 				inWall = true;
 				Cwrong = true;
@@ -333,7 +403,7 @@ void MoveCheck(bool player)
 			Pspeed = 0;
 			return;
 		}
-		if (-SpeedChange<abs(Pspeed))
+		if (-SpeedChange < abs(Pspeed))
 		{
 			SpeedChange += abs(Pspeed);
 			if (Pspeed > 0)
@@ -348,23 +418,23 @@ void MoveCheck(bool player)
 		else Pspeed = 0;
 		if (inWall)
 		{
-			while (c == BGR(0x0000FF))
+			/*while (c == BGR(0x0000FF))
 			{
 				Px += (int)round(cos(PForward));
 				Py += (int)round(sin(PForward));
-				for (int i1 = 0; i1 < iX; i1++)
+				for (int i = 0; i < w; i++)
 				{
-					for (int i2 = 0; i2 < iY; i2++)
+					for (int j = 0; j < h; j++)
 					{
-						c = pbTch[PointTsm((int)ceil(i1 + Mx), (int)ceil(i2 + My), WIDE, HEIGHT)] & 0x00FFFFFF;
+						c = pbTch[PointTsm((int)ceil(i + x), (int)ceil(j + y), nMapW, nMapH)] & 0x00FFFFFF;
 					}
 				}
-			}
+			}*/
 		}
 		else
 		{
-			Px = (int)ceil(Mx);
-			Py = (int)ceil(My);
+			Px = (int)ceil(x);
+			Py = (int)ceil(y);
 		}
 	}
 	else
@@ -374,7 +444,7 @@ void MoveCheck(bool player)
 			Cspeed = 0;
 			return;
 		}
-		if (-SpeedChange<abs(Cspeed))
+		if (-SpeedChange < abs(Cspeed))
 		{
 			SpeedChange += abs(Cspeed);
 			if (Cspeed > 0)
@@ -389,30 +459,30 @@ void MoveCheck(bool player)
 		else Cspeed = 0;
 		if (inWall)
 		{
-			while (c == BGR(0x0000FF))
+			/*while (c == BGR(0x0000FF))
 			{
 				Cx += (int)round(cos(CForward));
 				Cy += (int)round(sin(CForward));
-				for (int i1 = 0; i1 < iX; i1++)
+				for (int i = 0; i < w; i++)
 				{
-					for (int i2 = 0; i2 < iY; i2++)
+					for (int j = 0; j < h; j++)
 					{
-						c = pbTch[PointTsm((int)ceil(i1 + Mx), (int)ceil(i2 + My), WIDE, HEIGHT)] & 0x00FFFFFF;
+						c = pbTch[PointTsm((int)ceil(i + x), (int)ceil(j + y), Racing.getwidth(), Racing.getheight())] & 0x00FFFFFF;
 					}
 				}
-			}
+			}*/
 		}
 		else
 		{
-			Cx = (int)ceil(Mx);
-			Cy = (int)ceil(My);
+			Cx = (int)ceil(x);
+			Cy = (int)ceil(y);
 		}
 	}
-	if (PinLine&&PHadPass)
+	if (PinLine && PHadPass)
 	{
 		PWaitOut = true;
 	}
-	if (CinLine&&CHadPass)
+	if (CinLine && CHadPass)
 	{
 		CWaitOut = true;
 	}
@@ -427,23 +497,15 @@ void MoveCheck(bool player)
 		CWaitOut = false;
 	}
 
-}
 
-void PutImgWithout(IMAGE &obj, int px, int py, COLORREF withouter = WHITE, DWORD* pbWnd = GetImageBuffer(GetWorkingImage()), int wX = getwidth(), int wY = getheight(), DWORD bitsub = 0x00FFFFFF)
-{
-	DWORD* pbImg = GetImageBuffer(&obj);
-	int iX = obj.getwidth();
-	int iY = obj.getheight();
-	for (int i1 = 0; i1 < iX; i1++)
+	// 记录上一次的坐标
+	if (!player)
 	{
-		for (int i2 = 0; i2 < iY; i2++)
-		{
-			if (PointTsm(i1 + px, i2 + py, wX, wY) == -1)continue;						// 检测是否越界
-			if ((pbImg[PointTsm(i1, i2, iX, iY)] & bitsub) == BGR(withouter))continue;	// 检测是否要排除该颜色
-
-
-			pbWnd[PointTsm(i1 + px, i2 + py, wX, wY)] = pbImg[PointTsm(i1, i2, iX, iY)]; // 操作显存
-		}
+		pPrevious[0] = { Px,Py };
+	}
+	else
+	{
+		pPrevious[1] = { Cx,Cy };
 	}
 }
 
@@ -454,7 +516,8 @@ int GetCommand()
 	{
 		if (GetAsyncKeyState(VK_LEFT) & 0x8000)		c |= CMD_LEFT;
 		if (GetAsyncKeyState(VK_RIGHT) & 0x8000)	c |= CMD_RIGHT;
-		if (GetAsyncKeyState(VK_UP) & 0x8000)		c |= CMD_UP;
+		if (GetAsyncKeyState(VK_UP) & 0x8000)
+			c |= CMD_UP;
 		if ((GetAsyncKeyState(VK_DOWN) & 0x8000))	c |= CMD_DOWN;
 		if ((GetAsyncKeyState(VK_SHIFT) & 0x8000))	c |= CMD_SHIFT;
 	}
@@ -488,18 +551,18 @@ void DispatchCommand(int _cmd)
 		if (_cmd & sCMD_LEFT)		OnLeft(true);
 		if (_cmd & sCMD_RIGHT)		OnRight(true);
 	}
-	if (_cmd&CMD_QUIT)
+	if (_cmd & CMD_QUIT)
 	{
 		MeumMod = true;
 	}
 }
 
-void init()
+void InitGame()
 {
 	Loading();
 
 	BeginBatchDraw();
-	if(chexit)return;
+	if (chexit)return;
 
 	setbkmode(TRANSPARENT);
 	settextcolor(WHITE);
@@ -510,13 +573,25 @@ void init()
 	SetBirth();
 }
 
+// 自动根据速度更新转向速度
+void AutoRotaSetting()
+{
+	int max = 15;
+	int p = Rota_base - (int)(Pspeed / 3);
+	int c = Rota_base - (int)(Cspeed / 3);
+	if (p >= max)	PRota = p;
+	else			PRota = max;
+	if (c >= max)	CRota = c;
+	else			CRota = max;
+}
+
 void gaming()
 {
 	//游戏菜单
 	settextcolor(BLACK);
-	bottom gc(1, WIDE / 2 - 50, HEIGHT / 2 - 100, 100, 50, L"继续游戏");
-	bottom gh(2, WIDE / 2 - 50, HEIGHT / 2, 100, 50, L"回到主菜单");
-	bottom ge(3, WIDE / 2 - 50, HEIGHT / 2 + 100, 100, 50, L"退出游戏");
+	button gc(1, WIDTH / 2 - 50, HEIGHT / 2 - 100, 100, 50, L"继续游戏");
+	button gh(2, WIDTH / 2 - 50, HEIGHT / 2, 100, 50, L"回到主菜单");
+	button ge(3, WIDTH / 2 - 50, HEIGHT / 2 + 100, 100, 50, L"退出游戏");
 
 	page gm;
 
@@ -530,19 +605,21 @@ void gaming()
 	mciSendString(L"play mymusic repeat", NULL, 0, NULL);
 
 	StartWord();
-	Start = clock();//开始计时
-	timer a;
+	Start = clock();// 开始计时
+	timer tCmd;		// 获取命令计时
+	timer tWinWait;	// 胜利后计时
+	bool bStartWaitWin = false;	// 是否进入胜利后的短暂等待时间
 	while (true)
 	{
 		Now = clock();
-		if (a.WaitFor(25))							// 如果过了0.025秒
+		if (tCmd.WaitFor(25))						// 如果过了0.025秒
 		{
 			DispatchCommand(GetCommand());			// 获取操作
 			if (Pspeed != 0)
 			{
 				MoveCheck(false);
 			}
-			if(TwoPlayer) if (Cspeed != 0)
+			if (TwoPlayer && Cspeed != 0)
 			{
 				MoveCheck(true);
 			}
@@ -568,7 +645,24 @@ void gaming()
 			}
 			Start += clock() - MeumUsed;
 		}
+
+		Processing = clock();
+
+		AutoRotaSetting();
 		Draw();
+
+		// 胜利判定
+		if ((TwoPlayer && Cover && Pover) || (!TwoPlayer && Pover))
+		{
+			bStartWaitWin = true;
+		}
+		if (bStartWaitWin && tWinWait.WaitFor(3000))
+		{
+			End();
+			WinScene();
+			isres = true;
+			break;
+		}
 	}
 }
 
@@ -579,410 +673,15 @@ void End()
 	EndBatchDraw();
 }
 
-
-//
-// NOTE: 由于 zoomImage 函数拉伸高度为 1px 的图像时出现问题，
-// 所以加入了这个新的图像拉伸函数
-//
-// 图片拉伸
-// width, height 拉伸后的图片大小
-// img 原图像
-void ImageToSize(int width, int height, IMAGE* img)
-{
-	IMAGE* pOldImage = GetWorkingImage();
-	SetWorkingImage(img);
-
-	IMAGE temp_image(width, height);
-
-	StretchBlt(
-		GetImageHDC(&temp_image), 0, 0, width, height,
-		GetImageHDC(img), 0, 0,
-		getwidth(), getheight(),
-		SRCCOPY
-	);
-
-	Resize(img, width, height);
-	putimage(0, 0, &temp_image);
-
-	SetWorkingImage(pOldImage);
-}
-
-// 小地图（右上角）
-void DrawSmallMap()
-{
-	IMAGE img = Racing;
-	SetWorkingImage(&img);
-
-	// 此时 Player1、2 已经旋转过，无需再旋转
-	PutImgWithout(Player1, Px, Py);
-	if (TwoPlayer)
-		PutImgWithout(Player2, Cx, Cy);
-	
-	SetWorkingImage();
-
-	int w = 200, h = 200;
-	int x = WIDE - w;
-	//ImageToSize(w, h, &img);
-	img = zoomImage(&img, w, h);
-	putimage(x, 0, &img);
-	rectangle(x, 0, x+w, h);
-}
-
-//POINT Rotate2D(int x, int y, double radian)
-//{
-//	if (radian == 0)	return { x,y };
-//	return { (int)(x * cos(radian) - y * sin(radian)),
-//		(int)(x * sin(radian) + y * cos(radian)) };
-//}
-
-// 获取小车在旋转后的地图中的位置
-POINT GetRotatedCarPosition(int width, int height, int x, int y,double radian)
-{
-	IMAGE p(width, height), p2;
-	int nw, nh;
-	SetWorkingImage(&p);
-	fillrectangle(x, y, x + 2, y + 2);
-	rotateimage(&p2, &p, radian, BLACK, true, false);
-	nw = p2.getwidth();
-	nh = p2.getheight();
-	SetWorkingImage();
-	DWORD* buf = GetImageBuffer(&p2);
-	/*POINT pr;*/
-	for (int i = 0; i < nw * nh; i++)
-	{
-		if (buf[i] == WHITE)
-		{
-			return { i - (i / nw) * nw,i / nw };
-		}
-	}
-
-	/*SetWorkingImage(&p2);
-	for (int j = 0; j < nh; j++)
-	{
-		for (int j = 0; j < nw; j++)
-		{
-			if (getpixel(j, j) == WHITE)
-			{
-				return { j,j };
-			}
-		}
-	}
-	SetWorkingImage();*/
-
-	// 寻找失败
-	return { -1,-1 };
-}
-
-//POINT GetRotatedCarPosition2(int width, int height, int x, int y, double radian)
-//{
-//	int half_w = width / 2, half_h = height / 2;
-//	int left = 0, top = 0;
-//	POINT points[4] = { {-half_w,half_h},{half_w,half_h},{-half_w,-half_h},{half_w,-half_h} };
-//	for (int j = 0; j < 4; j++)
-//	{
-//		// 绘图窗口坐标系的 y 坐标需要反转
-//		points[j] = Rotate2D(points[j].x, /*-*/points[j].y, radian);
-//		//points[j].y = -points[j].y;
-//	}
-//	POINT p = Rotate2D(x, y, radian);
-//
-//	for (int j = 0; j < 4; j++)
-//	{
-//		if (points[j].x < points[left].x)
-//		{
-//			left = j;
-//		}
-//		else if (points[j].y < points[top].y)
-//		{
-//			top = j;
-//		}
-//	}
-//
-//	// 移动
-//	p.x += -half_w - points[left].x;
-//	p.y += points[top].y - half_h;
-//	
-//	//p.y = -p.y;
-//
-//	return p;
-//}
-
-// 获取玩家视野
-IMAGE GetPlayerView(
-	int pViewLength,
-	int pNearViewWidth,
-	int pFarViewWidth,
-	int pRearViewLength,	// 后视野长度
-	IMAGE imgMap,			// 含有车子的地图
-	double radian,			// 车子角度
-	POINT pOldCar			// 车子坐标
-)
-{
-	// 视野缩放比
-	double dViewZoomRatio = (pFarViewWidth - pNearViewWidth) / (double)pViewLength;
-	IMAGE imgMapRotated;	// 以车为正方向的旋转后的地图
-	
-	int nMapWdith = imgMap.getwidth();
-	int	nMapHeight = imgMap.getheight();
-
-	// 将地图旋转为以车方向为正方向
-	rotateimage(&imgMapRotated, &imgMap, radian, BLACK, true, false);
-
-	int nRotatedMapWidth = imgMapRotated.getwidth();
-	int nRotatedMapHeight = imgMapRotated.getheight();
-
-	// 地图旋转后，车坐标也要旋转
-	POINT pCar = GetRotatedCarPosition(nMapWdith, nMapHeight, pOldCar.x, pOldCar.y, radian);
-
-	// 玩家视野
-	IMAGE imgView(pFarViewWidth, pViewLength);
-
-	// 从车子位置向前方获取图像
-	DWORD* bufImgRotatedMap = GetImageBuffer(&imgMapRotated);
-	for (int i = 0; i < pViewLength; i++)
-	{
-		// 当前这一条视野线的宽度
-		int nThisWidth = (int)(pNearViewWidth + dViewZoomRatio * i);
-
-		// 获取当前视野线图像【方法 1】
-		/*IMAGE imgThisLine;
-		SetWorkingImage(&imgMapRotated);
-		getimage(&imgThisLine, pCar.x - nThisWidth / 2, pCar.y - (i - pRearViewLength), nThisWidth, 1);*/
-
-		// 获取当前视野线图像【方法 2】（稍微快一点）
-		IMAGE imgThisLine(nThisWidth, 1);
-		DWORD* bufThisLine = GetImageBuffer(&imgThisLine);
-		for (int j = 0; j < nThisWidth; j++)
-		{
-			int lines_x = (pCar.y - (i - pRearViewLength)) * nRotatedMapWidth;
-			int x = (pCar.x - nThisWidth / 2) + j;
-
-			// 越界，填黑
-			if (x < 0 || x > nRotatedMapWidth || lines_x + x > nRotatedMapWidth * nRotatedMapHeight || lines_x + x < 0)
-			{
-				bufThisLine[j] = BLACK;
-			}
-			else
-			{
-				bufThisLine[j] = bufImgRotatedMap[lines_x + x];
-			}
-		}
-
-		// 将当前视野线拉升至最长视野宽度
-		IMAGE imgThisZoomLine = imgThisLine;
-		ImageToSize(pFarViewWidth, 1, &imgThisZoomLine);
-
-		// 将当前线画入视野
-		SetWorkingImage(&imgView);
-		putimage(0, pViewLength - i, &imgThisZoomLine);
-	}
-
-	SetWorkingImage();
-
-	return imgView;
-}
-
-// 【新增函数 by huidong】
-// 伪 3D 绘制玩家视角
-void Draw3D_PlayerView()
-{
-	int nViewLength = 300;		// 视野长度
-	int nNearViewWidth = 100;	// 近视野宽度
-	int nFarViewWidth = 200;	// 远视野宽度
-	int nRearViewLength = 30;	// 后视野长度（用于看见车身）
-
-	// 双人模式下为减小消耗，缩窄视野
-	if (TwoPlayer)
-	{
-		nViewLength /= 2;
-		nNearViewWidth /= 2;
-		nFarViewWidth /= 2;
-	}
-
-	IMAGE imgMap = Racing;	// 地图（有车）
-
-	// 将车放入地图
-	SetWorkingImage(&imgMap);
-	rotateimage(&Player1, &car1, -PForward, WHITE, true, false);
-	PutImgWithout(Player1, Px, Py);
-	if (TwoPlayer)
-	{
-		rotateimage(&Player2, &car2, -CForward, WHITE, true, false);
-		PutImgWithout(Player2, Cx, Cy);
-	}
-
-	// 获取玩家视野
-	IMAGE imgRealView[2];
-	imgRealView[0] = GetPlayerView(nViewLength, nNearViewWidth, nFarViewWidth, nRearViewLength, imgMap, PForward + PI / 2, { Px,Py });
-	if(TwoPlayer)
-		imgRealView[1] = GetPlayerView(nViewLength, nNearViewWidth, nFarViewWidth, nRearViewLength, imgMap, CForward + PI / 2, { Cx,Cy });
-
-	// 实际在屏幕上显示的图像需要拉伸
-	if (!TwoPlayer)
-	{
-		ImageToSize(WIDE, HEIGHT, &imgRealView[0]);
-		
-		// 此方案太慢
-		//imgRealView[0] = zoomImage(&imgRealView[0],WIDE, HEIGHT);
-
-		putimage(0, 0, &imgRealView[0]);
-	}
-	else
-	{
-		ImageToSize(WIDE / 2, HEIGHT, &imgRealView[0]);
-		ImageToSize(WIDE / 2, HEIGHT, &imgRealView[1]);
-		putimage(WIDE / 2, 0, &imgRealView[0]);	// 玩家 1 操作方向键，所以放右边
-		putimage(0, 0, &imgRealView[1]);		// 玩家 2 操作 WSAD，放左边
-		
-		setlinestyle(PS_SOLID, 2);
-		line(WIDE / 2, 0, WIDE / 2, HEIGHT);
-		setlinestyle(PS_SOLID, 1);
-	}
-}
-
-// 获取游戏中的速度对应的 km/h 单位制速度
-double GetKMSpeed(double speed)
-{
-	return speed *= 10;
-}
-
-// 获取速度对应的颜色
-COLORREF GetSpeedColor(double speed, double max)
-{
-	double stage = max / 3;
-
-	if (speed >= stage * 2)
-		return RED;
-	else if (speed >= stage * 1)
-		return RGB(250, 110, 0);	// 橙色
-	else
-		return WHITE;
-}
-
-// 绘制速度
-void DrawSpeed()
-{
-	settextstyle(30, 0, L"system");
-
-	if (!TwoPlayer)
-	{
-		settextcolor(GetSpeedColor(Pspeed, MaxSpeed));
-		wstring str = to_wstring(GetKMSpeed(Pspeed)) + L" km/h";
-		outtextxy(10, 90, str.c_str());
-	}
-	else
-	{
-		// 左：玩家二
-		wstring strPlayer2 = to_wstring(GetKMSpeed(Cspeed)) + L" km/h";
-		settextcolor(GetSpeedColor(Cspeed, MaxSpeed));
-		outtextxy(10, 90, strPlayer2.c_str());
-
-		// 右：玩家一
-		wstring strPlayer1 = to_wstring(GetKMSpeed(Pspeed)) + L" km/h";
-		settextcolor(GetSpeedColor(Pspeed, MaxSpeed));
-		outtextxy(WIDE - textwidth(strPlayer1.c_str()), 200, strPlayer1.c_str());
-	}
-
-	settextstyle(16, 0, L"宋体");
-	settextcolor(WHITE);
-}
-
-// 绘制普通的 2D 赛道
-void Draw2DView()
-{
-	putimage(0, 0, &Racing);
-	rotateimage(&Player1, &car1, -PForward, WHITE, true, false);
-	PutImgWithout(Player1, Px, Py);
-	
-	if (TwoPlayer)
-	{
-		rotateimage(&Player2, &car2, -CForward, WHITE, true, false);
-		PutImgWithout(Player2, Cx, Cy);
-	}
-}
-
-void Draw()
-{
-	cleardevice();
-	settextcolor(WHITE);
-
-	// 绘制赛道
-
-	//Draw2DView();
-
-	Draw3D_PlayerView();
-	DrawSmallMap();
-	DrawSpeed();
-
-	if (Pwrong)
-	{
-		outtextxy(Px - 20, Py - 20, _T("请勿逆行"));
-		if ((Now - Ptime2) > 100)
-		{
-			Pwrong = false;
-		}
-	}
-	if (TwoPlayer) if (Cwrong)
-	{
-		outtextxy(Cx - 20, Cy - 20, _T("请勿逆行"));
-		if ((Now - Ctime2) > 100)
-		{
-			Cwrong = false;
-		}
-	}
-	//绘制分数
-	if (!Pover)
-	{
-		outtextxy(10, 10, (L"玩家1  " + to_wstring(Ppass) + L" / " + to_wstring(NeedR)).c_str());
-		outtextxy(10, 30, (L"玩家1用时 " + to_wstring((Now - Start) / 1000) + L"." + to_wstring((Now - Start) % 1000) + L"s").c_str());
-		if (Ppass == NeedR)
-		{
-			Pover = true;
-			Ptime = Now - Start;
-		}
-	}
-	else
-	{
-		outtextxy(10, 10, L"玩家1已完成!");
-		outtextxy(10, 30, (L"玩家1用时 " + to_wstring(Ptime / 1000) + L"." + to_wstring(Ptime % 1000) + L"s").c_str());
-	}
-	if (TwoPlayer) if (!Cover)
-	{
-		outtextxy(10, 50, (L"玩家2  " + to_wstring(Cpass) + L" / " + to_wstring(NeedR)).c_str());
-		outtextxy(10, 70, (L"玩家2用时 " + to_wstring((Now - Start) / 1000) + L"." + to_wstring((Now - Start) % 1000) + L"s").c_str());
-		if (Cpass == NeedR)
-		{
-			Cover = true;
-			Ctime = Now - Start;
-		}
-	}
-	else
-	{
-		outtextxy(10, 50, L"玩家2已完成!");
-		outtextxy(10, 70, (L"玩家2用时 " + to_wstring(Ctime / 1000) + L"." + to_wstring(Ctime % 1000) + L"s").c_str());
-	}
-	if ((TwoPlayer) && (Cover&&Pover))
-	{
-		if (Ctime > Ptime)outtextxy(10, 90, _T("玩家1获胜!"));
-		else outtextxy(10, 90, _T("玩家2获胜!"));
-		outtextxy(10, 110, _T("游戏结束，按ESC回到主菜单"));
-	}
-	else if (Pover)
-	{
-		outtextxy(10, 50, _T("游戏结束，按ESC回到主菜单"));
-	}
-	FlushBatchDraw();
-}
-
 void OnLeft(bool player)
 {
 	if (!player)
 	{
-		PForward -= PI / Rota;
+		PForward -= PI / PRota;
 	}
 	else
 	{
-		CForward -= PI / Rota;
+		CForward -= PI / CRota;
 	}
 	if (!CanRota(player))
 	{
@@ -1019,11 +718,11 @@ void OnRight(bool player)
 {
 	if (!player)
 	{
-		PForward += PI / Rota;
+		PForward += PI / PRota;
 	}
 	else
 	{
-		CForward += PI / Rota;
+		CForward += PI / CRota;
 	}
 	if (!CanRota(player))
 	{
@@ -1114,14 +813,14 @@ void SetBirth()
 	int Bx = 0;
 	int By = 0;
 	bool findA = false;
-	DWORD* pbTch = GetImageBuffer(&Toucher);
+	DWORD* pbTch = GetImageBuffer(&Mask);
 	//通过两个终点线端点获取终点线的向量
 	//通过atan2获取终点线与正方向的夹角
-	for (int i1 = 0; i1 < WIDE; i1++)
+	for (int i1 = 0; i1 < nMapW; i1++)
 	{
-		for (int i2 = 0; i2 < HEIGHT; i2++)
+		for (int i2 = 0; i2 < nMapH; i2++)
 		{
-			DWORD c = pbTch[PointTsm(i1, i2, WIDE, HEIGHT)] & 0x00FFFFFF;
+			DWORD c = pbTch[PointTsm(i1, i2, nMapW, nMapH)] & 0x00FFFFFF;
 			if (c == 0xFF00FF)
 			{
 				Px = i1;
@@ -1138,6 +837,7 @@ void SetBirth()
 				{
 					Ax = i1;
 					Ay = i2;
+					findA = true;
 				}
 				else
 				{
@@ -1148,76 +848,65 @@ void SetBirth()
 		}
 	}
 	EndLineForward = atan2(Ax - Bx, Ay - By);
+	PForward = EndLineForward;
+	CForward = EndLineForward;
+
+	pEndLinePoints[0] = { Ax, Ay };
+	pEndLinePoints[1] = { Bx, By };
+
+	pEndLine = GetLineOfPoints(pEndLinePoints[0], pEndLinePoints[1]);
 }
 
-void StartWord()
+// 设置低分辨率
+void LowResolution()
 {
-	int tmp;
-	COLORREF fontcol = 0x0;
-	LOGFONT font;
-	LOGFONT cha;
-	gettextstyle(&font);
-	cha = font;
-	cha.lfHeight = 500;
-	cha.lfWeight = FW_BOLD;
-	settextstyle(&cha);
-	settextcolor(fontcol);
-	//实现字体逐渐变白
-	for (int i = 3; i > 0; i--)
+	static int n = 0;
+
+	if (n == 0)
 	{
-		Start = Now = clock();
-		while ((Now - Start) < 1000)
+		WIDTH = 800;
+		HEIGHT = 600;
+	}
+	else
+	{
+		int w = (int)(WIDTH / 1.3);
+		int h = (int)(HEIGHT / 1.3);
+		if (w > 300 && h > 300)
 		{
-			cleardevice();
-			
-			/*putimage(0, 0, &Racing);
-			PutImgWithout(car1, Px, Py);
-			if (TwoPlayer) PutImgWithout(car2, Cx, Cy);*/
-
-			Draw3D_PlayerView();
-			DrawSmallMap();
-
-			RECT r = { 0, 0, WIDE, HEIGHT };
-			drawtext(to_wstring(i).c_str(), &r, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
-			Now = clock();
-			tmp = 255 * (Now - Start) / 1000;
-			fontcol = RGB(tmp, tmp, tmp);
-			settextcolor(fontcol);
-			FlushBatchDraw();
+			WIDTH = w;
+			HEIGHT = h;
 		}
 	}
-	Start = Now = clock();
-	while ((Now - Start) < 500)
-	{
-		cleardevice();
 
-		/*putimage(0, 0, &Racing);
-		PutImgWithout(car1, Px, Py);
-		if (TwoPlayer) PutImgWithout(car2, Cx, Cy);*/
+	dWidthZoom = WIDTH / 1280.0;
+	dHeightZoom = HEIGHT / 960.0;
+	closegraph();
+	initgraph(WIDTH, HEIGHT);
 
-		Draw3D_PlayerView();
-		DrawSmallMap();
-
-		Now = clock();
-		RECT r = { 0, 0, WIDE, HEIGHT };
-		drawtext(_T("START！"), &r, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
-		FlushBatchDraw();
-	}
-	settextstyle(&font);
-	settextcolor(WHITE);
+	n++;
 }
 
+// 菜单界面
 void Loading()
 {
-	cleardevice();
+	mciSendString(_T("open res\\bk.mp3 alias bk"), NULL, 0, NULL);
+	mciSendString(_T("play bk repeat"), NULL, 0, NULL);
 
+begin:
+
+	cleardevice();
+	settextstyle(16, 0, L"system");
 	settextcolor(BLACK);
 
 	//主菜单按钮与界面
-	bottom bs(1, 540, 580 - 400, 200, 100, L"单人模式");
-	bottom bd(4, 540, 580 - 200, 200, 100, L"双人模式");
-	bottom bh(2, 540, 580, 200, 100, L"游戏说明");
-	bottom be(3, 540, 580 + 200, 200, 100, L"退出游戏");
+	button bs(1, 540, 580 - 400, 200, 100, L"单人模式");
+	button bd(2, 540, 580 - 200, 200, 100, L"双人模式");
+	button bh(3, 540, 580, 200, 100, L"游戏说明");
+	button be(4, 540, 580 + 200, 200, 100, L"退出游戏");
+
+	button btnLowResolution(5, 160, 20, 160, 40, L"低分辨率模式");
+	button btnOriginal(6, 160, 70, 160, 40, L"开启原版视角（2D）");
+	button btnPerspective(7, 160, 120, 160, 40, L"关闭 2.5D 透视效果");
 
 	page sm;
 
@@ -1225,12 +914,35 @@ void Loading()
 	sm.botlist.push_back(bh);
 	sm.botlist.push_back(be);
 	sm.botlist.push_back(bd);
+	sm.botlist.push_back(btnLowResolution);
+	sm.botlist.push_back(btnOriginal);
+	sm.botlist.push_back(btnPerspective);
 
-	settextcolor(WHITE);
-	RECT r = { 0, 0, 1280, 200 };
-	drawtext(L"双人赛车", &r, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+#define MULTIPLY(x,y) x = (int)(x * y)
 
-	outtextxy(50, 200, L"2.5D 赛车~  huidong 修改版");
+	// 适配低分辨率
+	for (int i = 0; i < 7; i++)
+	{
+		MULTIPLY(sm.botlist[i].x, dWidthZoom);
+		MULTIPLY(sm.botlist[i].y, dHeightZoom);
+		MULTIPLY(sm.botlist[i].width, dWidthZoom);
+		MULTIPLY(sm.botlist[i].height, dHeightZoom);
+	}
+
+	settextcolor(RGB(255, 130, 40));
+	LOGFONT f;
+	gettextstyle(&f);
+	f.lfHeight = 86;
+	_tcscpy_s(f.lfFaceName, _T("黑体"));
+	f.lfItalic = true;
+
+	settextstyle(&f);
+	RECT r = { 0, 0, (int)(1280 * dWidthZoom), (int)(200 * dHeightZoom) };
+	drawtext(L"2.5D 双人赛车", &r, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+
+	settextstyle(16, 0, L"system", 0, 0, 0, false, false, false);
+	settextcolor(LIGHTBLUE);
+	outtextxy(50, 200, L"双人赛车   huidong 修改版 Ver 2.0");
 	outtextxy(50, 240, L"原作者：极品史莱姆");
 	outtextxy(50, 300, L"玩家一：方向键操作，并且可以使用 shift 键短刹车");
 	outtextxy(50, 340, L"玩家二：WSAD 操作");
@@ -1238,45 +950,51 @@ void Loading()
 	int gid = 0;
 	while (true)
 	{
+		if (isUseOriginal)	sm.botlist[btnOriginal.ID - 1].str = L"关闭原版视角（2D）";
+		else				sm.botlist[btnOriginal.ID - 1].str = L"开启原版视角（2D）";
+
+		if (isUseOriginal)				sm.botlist[btnPerspective.ID - 1].str = L"--原版视角下无透视--";
+		else if (isPerspectiveEffect)	sm.botlist[btnPerspective.ID - 1].str = L"关闭 2.5D 透视效果";
+		else							sm.botlist[btnPerspective.ID - 1].str = L"开启 2.5D 透视效果";
+
 		gid = sm.ShownPage();
 
-		if (gid == 2)
+		switch (gid)
 		{
-			showhelp();
-		}
-		if (gid == 3)
-		{
-			chexit = true;
-			return;
-		}
-		if (gid == 1)
-		{
-			TwoPlayer = false;
-			break;
-		}
-		if (gid == 4)
-		{
-			TwoPlayer = true;
-			break;
+		case 1:	TwoPlayer = false;	goto btn_end;
+		case 2:	TwoPlayer = true;	goto btn_end;
+		case 3:	showhelp();			goto begin;
+		case 4:	chexit = true;		return;
+		case 5: LowResolution();	goto begin;
+		case 6: isUseOriginal = !isUseOriginal;	break;
+		case 7:	if (!isUseOriginal) isPerspectiveEffect = !isPerspectiveEffect;	break;
 		}
 	}
 
+btn_end:
+
 	int num = ChooseMap();
+	if (num == -1)
+	{
+		goto begin;
+	}
+
 	wstring rootpath = L"map\\" + IntroList[num].filename + L"\\";
-
 	wchar_t tmp[30];
-
-	GetPrivateProfileString(L"File", L"Toucher", NULL, tmp, 30, IntroList[num].inipath.c_str());
-	loadimage(&Toucher, (rootpath + tmp).c_str());
-	HEIGHT = Toucher.getheight();
-	WIDE = Toucher.getwidth();
+	IMAGE imgTmp[4];
 
 	GetPrivateProfileString(L"File", L"Car1", NULL, tmp, 30, IntroList[num].inipath.c_str());
-	loadimage(&car1, (rootpath + tmp).c_str());
+	loadimage(&imgTmp[0], (rootpath + tmp).c_str());
+	car1 = imgTmp[0];
 	GetPrivateProfileString(L"File", L"Car2", NULL, tmp, 30, IntroList[num].inipath.c_str());
-	loadimage(&car2, (rootpath + tmp).c_str());
+	loadimage(&imgTmp[1], (rootpath + tmp).c_str());
+	car2 = imgTmp[1];
 	GetPrivateProfileString(L"File", L"Racing", NULL, tmp, 30, IntroList[num].inipath.c_str());
-	loadimage(&Racing, (rootpath + tmp).c_str());
+	loadimage(&imgTmp[2], (rootpath + tmp).c_str());
+	Racing = imgTmp[2];
+	GetPrivateProfileString(L"File", L"Toucher", NULL, tmp, 30, IntroList[num].inipath.c_str());
+	loadimage(&imgTmp[3], (rootpath + tmp).c_str());
+	Mask = imgTmp[3];
 	GetPrivateProfileString(L"File", L"Music", NULL, tmp, 30, IntroList[num].inipath.c_str());
 	mciSendString((L"open " + rootpath + tmp + L" alias mymusic").c_str(), NULL, 0, NULL);	// 打开MP3文件
 	//通过文件获取值
@@ -1284,8 +1002,21 @@ void Loading()
 	FinSand = GetPrivateProfileInt(L"Set", L"FinSand", FinSand, IntroList[num].inipath.c_str());
 	FinRoad = GetPrivateProfileInt(L"Set", L"FinRoad", FinRoad, IntroList[num].inipath.c_str());
 	FinIce = GetPrivateProfileInt(L"Set", L"FinIce", FinIce, IntroList[num].inipath.c_str());
-	Rota = GetPrivateProfileInt(L"Set", L"Rota", Rota, IntroList[num].inipath.c_str());
+	Rota_base = GetPrivateProfileInt(L"Set", L"Rota", Rota_base, IntroList[num].inipath.c_str());
 	NeedR = GetPrivateProfileInt(L"Set", L"NeedR", NeedR, IntroList[num].inipath.c_str());
+
+	for (int i = 0; i < 3; i++)
+	{
+		wstring wch;
+		wch += L'C' - i;
+		nLevelTime[i] = GetPrivateProfileInt(L"Level", wch.c_str(), nLevelTime[i], IntroList[num].inipath.c_str());
+	}
+
+	nMapW = Racing.getwidth();
+	nMapH = Racing.getheight();
+
+	mciSendString(_T("stop bk"), NULL, 0, NULL);
+	mciSendString(_T("close bk"), NULL, 0, NULL);
 }
 
 void showhelp()
@@ -1314,14 +1045,16 @@ void showhelp()
 	}
 	else
 	{
-		MessageBox(NULL, L"帮助文件丢失", L"错误", MB_ICONEXCLAMATION|MB_SYSTEMMODAL);
+		MessageBox(NULL, L"帮助文件丢失", L"错误", MB_ICONEXCLAMATION | MB_SYSTEMMODAL);
 		closegraph();
 		exit(1);
 	}
 
 	Record += 2;
 	settextstyle(24, 0, L"宋体");
-	outtextxy(10, (int)(1.2 * Record*16), L"按 ESC 键返回主菜单");
+	outtextxy(10, (int)(1.2 * Record * 16), L"按 ESC 键返回主菜单");
+
+	settextstyle(16, 0, L"宋体");
 
 	clean();
 	_getch();
@@ -1333,6 +1066,7 @@ void showhelp()
 	return;
 }
 
+// 清空按键缓冲区
 void clean()
 {
 	int k;
@@ -1377,40 +1111,42 @@ void restart()
 	Start = 0;
 	Now = 0;
 	MeumUsed = 0;
+	Processing = 0;
 }
 
 bool CanRota(bool player)
 {
-	DWORD* pbTch = GetImageBuffer(&Toucher);
-	double Mx;
-	double My;
-	int iX;
-	int iY;
+	DWORD* pbTch = GetImageBuffer(&Mask);
+	int x, y, w, h;
 	int SpeedChange = 0;
-	DWORD c;
-	IMAGE tmp;
+	IMAGE tmpRotatedCar;	// 存储旋转后的车子
 	if (!player)
 	{
-		Mx = Px;
-		My = Py;
-		rotateimage(&tmp, &car1, -PForward, WHITE, true, false);
+		x = Px;
+		y = Py;
+		rotateimage(&tmpRotatedCar, &car1, -PForward, WHITE, true, false);
 	}
 	else
 	{
-		Mx = Cx;
-		My = Cy;
-		rotateimage(&tmp, &car2, -CForward, WHITE, true, false);
+		x = Cx;
+		y = Cy;
+		rotateimage(&tmpRotatedCar, &car2, -CForward, WHITE, true, false);
 	}
-	DWORD* pbImg = GetImageBuffer(&tmp);
-	iX = tmp.getwidth();
-	iY = tmp.getheight();
-	//获取所在的地面类型
-	for (int i1 = 0; i1 < iX; i1++)
+	DWORD* pCar = GetImageBuffer(&tmpRotatedCar);
+	w = tmpRotatedCar.getwidth();
+	h = tmpRotatedCar.getheight();
+
+	// 获取所在的地面类型
+	for (int i = 0; i < w; i++)
 	{
-		for (int i2 = 0; i2 < iY; i2++)
+		for (int j = 0; j < h; j++)
 		{
-			c = pbTch[PointTsm((int)ceil(i1 + Mx), (int)ceil(i2 + My), WIDE, HEIGHT)] & 0x00FFFFFF;
-			if (c == BGR(0x0000FF))
+			if ((pCar[PointTsm(i, j, w, h)] & 0x00FFFFFF) == WHITE)
+			{
+				continue;
+			}
+
+			if ((pbTch[PointTsm(i + x, j + y, nMapW, nMapH)] & 0x00FFFFFF) == BGR(0x0000FF))
 			{
 				return false;
 			}
@@ -1419,13 +1155,23 @@ bool CanRota(bool player)
 	return true;
 }
 
+// 载入只需要加载一次的资源
+void InitRes()
+{
+	loadimage(&imgWinFlag, L"res/flag.jpg");
+	loadimage(&imgStar[0], L"res/star1.bmp");
+	loadimage(&imgStar[1], L"res/star2.bmp");
+}
+
 int main()
 {
-	initgraph(WIDE, HEIGHT);							// 创建绘图窗口
+	initgraph(WIDTH, HEIGHT);
+
+	InitRes();
 
 	while (isres)
 	{
-		init();
+		InitGame();
 		if (chexit)
 		{
 			break;
@@ -1433,6 +1179,6 @@ int main()
 		gaming();
 		restart();
 	}
-	
+
 	closegraph();
 }

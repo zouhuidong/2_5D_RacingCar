@@ -23,5 +23,8 @@
     <ClInclude Include="define.h">
       <Filter>源文件</Filter>
     </ClInclude>
+    <ClInclude Include="NewDrawer.h">
+      <Filter>源文件</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>
