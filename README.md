@@ -236,6 +236,10 @@ bool isRetrograde(double dPlayerForward, double dLineForward, double dSpeed)
 
 17. 优化诸多细节方面的代码逻辑。
 
+18. 支持切换为原版模式
+
+19. 支持关闭 2.5D 透视效果
+
 **Ver 1.0** (2021.12.25)
 
 1. 视角改为 2.5D（伪 3D）
