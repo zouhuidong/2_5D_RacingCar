@@ -1,7 +1,8 @@
 # 2.5D RacingCar | 2.5D 双人赛车
-![License](https://img.shields.io/github/license/zouhuidong/2_5D_RacingCar)
 ![Downloads](https://img.shields.io/github/downloads/zouhuidong/2_5D_RacingCar/total)
 ![GitHub Version](https://img.shields.io/github/v/release/zouhuidong/2_5D_RacingCar)
+[![Blog](https://img.shields.io/badge/blog-huidong.xyz-green.svg)](http://huidong.xyz)
+[![EasyX](https://img.shields.io/badge/graphics-EasyX-orange.svg)](https://easyx.cn)
 
 Table of Contents
 =================
