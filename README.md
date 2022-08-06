@@ -4,25 +4,6 @@
 [![Blog](https://img.shields.io/badge/blog-huidong.xyz-green.svg)](http://huidong.xyz)
 [![EasyX](https://img.shields.io/badge/graphics-EasyX-orange.svg)](https://easyx.cn)
 
-Table of Contents
-=================
-
-* [2\.5D RacingCar | 2\.5D 双人赛车](#25d-racingcar--25d-双人赛车)
-  * [简介](#简介)
-  * [编译环境](#编译环境)
-  * [游戏截图](#游戏截图)
-  * [“3D”原理](#3d原理)
-  * [制图建议](#制图建议)
-    * [地图的绘制](#地图的绘制)
-    * [碰撞图的绘制](#碰撞图的绘制)
-    * [车辆的绘制](#车辆的绘制)
-  * [踩坑](#踩坑)
-    * [踩坑 1](#踩坑-1)
-    * [踩坑 2](#踩坑-2)
-    * [踩坑 3](#踩坑-3)
-    * [还有吗](#还有吗)
-  * [更新日志](#更新日志)
-
 ## 简介
 
 **原作者：极品史莱姆 (799052200@qq.com)**
