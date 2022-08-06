@@ -22,11 +22,7 @@
 
 ## 编译环境
 
-Visual Studio 2022
-
-Windows 10
-
-EasyX 20211109
+Windows 10 | Visual Studio 2022 | EasyX 20211109
 
 ## 游戏截图
 
